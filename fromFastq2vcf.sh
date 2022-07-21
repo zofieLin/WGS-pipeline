@@ -134,7 +134,7 @@ log=\"$dir/$sample/${sample}.log\"
 ## Generate vcf file using HaplotypeCaller and GenotypeGVCFs
 if [ ! -d "$dir/$sample/variantCalling/byChr/chr$chr" ]; then mkdir -p $dir/$sample/variantCalling/byChr/chr$chr; fi
 echo \"HC GVCF calling for chr$chr started on \`date\`\" >> \$log
-    java -Xmx30g -Djava.io.tmpdir=\$temp_dir -jar /software/GenomeAnalysisTK/3.8.1.0/GenomeAnalysisTK.jar -T HaplotypeCaller -R $refseq -I $dir/$sample/alignment/${sample}.sorted.dedup.realn.recal.bam -ERC GVCF -variant_index_type LINEAR -variant_index_parameter 128000 --dbsnp $gatk_resources/dbsnp_138.hg19.vcf -A StrandOddsRatio -A Coverage -A QualByDepth -A FisherStrand -A MappingQualityRankSumTest -A ReadPosRankSumTest -A RMSMappingQuality -o $dir/$sample/variantCalling/byChr/chr$chr/chr${chr}.gvcf.vcf.gz -L chr$chr && \\       #previously is call from *.sorted.dedup.realn.bam
+    java -Xmx30g -Djava.io.tmpdir=\$temp_dir -jar /software/GenomeAnalysisTK/3.8.1.0/GenomeAnalysisTK.jar -T HaplotypeCaller -R $refseq -I $dir/$sample/alignment/${sample}.sorted.dedup.realn.recal.bam -ERC GVCF -variant_index_type LINEAR -variant_index_parameter 128000 --dbsnp $gatk_resources/dbsnp_138.hg19.vcf -A StrandOddsRatio -A Coverage -A QualByDepth -A FisherStrand -A MappingQualityRankSumTest -A ReadPosRankSumTest -A RMSMappingQuality -o $dir/$sample/variantCalling/byChr/chr$chr/chr${chr}.gvcf.vcf.gz -L chr$chr && \\   
 echo \"HC GVCF calling for chr$chr ended on \`date\`\" >> \$log
 
 echo \"Genotype GVCF calling of chr$chr started on \`date\`\" >> \$log
@@ -176,6 +176,40 @@ echo \"CatVariants chr gvcf ended on \`date\`\" >> \$log
 echo \"Combined chr gatkHC.vcf started on \`date\`\" >> \$log
       perl /software/vcftools/0.1.15/bin/vcf-concat \$vcf_list | bgzip -c > $dir/$sample/variantCalling/${sample}.gatkHC.vcf.gz && \\
       tabix -f -p vcf $dir/$sample/variantCalling/${sample}.gatkHC.vcf.gz
-echo \"Combined chr gatkHC.vcf ended on \`date\`\" >> \$log"          >$dir/sh.e.o/06_catgvcf/step6_${sample}_catgvcf.sh
+echo \"Combined chr gatkHC.vcf ended on \`date\`\" >> \$log"      >$dir/sh.e.o/06_catgvcf/step6_${sample}_catgvcf.sh
+done
 #### Step 6, Generating individual gVCF and VCF #########################################################################################
 
+
+#### Step 7, QC on bam and vcf ##########################################################################################################
+for sample in `cat $dir/sample.list`
+do
+        if [ ! -d "$dir/$sample/qc_stat" ]; then mkdir -p $dir/$sample/qc_stat; fi
+        if [ ! -d "$dir/sh.e.o/07_qc" ]; then mkdir -p $dir/sh.e.o/07_qc; fi
+
+echo "#!/bin/bash
+cd \$PBS_O_WORKDIR
+
+module load java/8.0_161 GenomeAnalysisTK/3.8.1.0 Picard/2.18.9
+temp_dir="$dir/$sample/tmp"
+log="$dir/$sample/${sample}.log"
+
+# QC1. Variant evaluation
+echo \"Variant evaluation started on \`date\`\" >> \$log
+      java -Xmx30g -Djava.io.tmpdir=\$temp_dir -jar /software/GenomeAnalysisTK/3.8.1.0/GenomeAnalysisTK.jar -T VariantEval -R $refseq --eval $dir/$sample/variantCalling/${sample}.gatkHC.vcf.gz --dbsnp $gatk_resources/dbsnp_138.hg19.excluding_sites_after_129.vcf -noST -ST Sample -ST Novelty-ST Filter -noEV -EV CountVariants -noEV -EV TiTvVariantEvaluator -noEV -EV IndelSummary -noEV -EV MultiallelicSummary -o $dir/$sample/qc_stat/${sample}.varEval.grp -nt 2 && \\
+echo \"Variant evaluation ended on \`date\`\" >> \$log
+
+# QC2. VerifyBamID for detecting contamination from bam files
+echo \"VerifyBamID started on \`date\`\" >> \$log
+      /software/VerifyBamID/1.1.3/verifyBamID --vcf /software/verifyBamID/Omni25_genotypes_1525_samples_v2.hg19.PASS.ALL.sites.vcf.gz --bam $dir/$sample/alignment/${sample}.sorted.dedup.realn.recal.bam --maxDepth 1000 --precise --out $dir/$sample/qc_stat/${sample}.verifyBamID && \\
+echo \"VerifyBamID ended on \`date\`\" >> \$log
+
+# QC3. Whole genome metrics - including DP
+if [ ! -e "$dir/$sample/qc_stat/${sample}.wgsMetric.txt" ]
+then
+echo \"Picard CollectWgsMetrics started on `date`\" >> \$log
+      java -Xmx30g -Djava.io.tmpdir=\$temp_dir -jar /software/Picard/2.18.9/picard.jar CollectWgsMetrics INPU
+T=$dir/$sample/alignment/${sample}.sorted.dedup.realn.recal.bam OUTPUT=$dir/$sample/qc_stat/${sample}.wgsMetric.txt REFERENCE_SEQUENCE=$refseq VALIDATION_STRINGENCY=LENIENT
+echo \"Picard CollectWgsMetrics ended on \`date\`\" >> \$log"     >$dir/sh.e.o/07_qc/step7_${sample}_qc.sh
+done
+#### Step 7, QC on bam and vcf ##########################################################################################################
