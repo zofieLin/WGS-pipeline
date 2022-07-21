@@ -120,7 +120,7 @@ done
 
 #### Step 5, Variant calling by chromosome ##############################################################################################
 if [ ! -d "$dir/sh.e.o/05_byChr" ]; then mkdir -p $dir/sh.e.o/05_byChr; fi
-for chr in `seq 22` X Y M
+for chr in `seq 22` X Y
 do
     if [ ! -d "$dir/sh.e.o/05_byChr/chr$chr" ]; then mkdir -p $dir/sh.e.o/05_byChr/chr$chr; fi
     for sample in `cat $dir/sample.list`
@@ -143,3 +143,39 @@ echo \"Genotype GVCF calling of chr$chr ended on \`date\`\" >> \$log"     >$dir/
     done
 done
 #### Step 5, Variant calling by chromosome ##############################################################################################
+
+
+#### Step 6, Generating individual gVCF and VCF ######################################################################################### 
+for sample in `cat $dir/sample.list`
+do
+      if [ ! -d "$dir/sh.e.o/06_catgvcf" ]; then mkdir -p $dir/sh.e.o/06_catgvcf; fi
+
+echo "#!/bin/bash
+cd \$PBS_O_WORKDIR
+
+module load java/8.0_161 GenomeAnalysisTK/3.8.1.0 vcftools/0.1.15
+
+temp_dir=\"$dir/$sample/tmp\"
+log=\"$dir/$sample/${sample}.log\"
+
+gvcf_list=\"\"
+vcf_list=\"\"
+for chr in \`seq 22\` X Y
+do
+      gvcf_list=\"\$gvcf_list -V $dir/$sample/variantCalling/byChr/chr\$chr/chr\${chr}.gvcf.vcf.gz\"
+      vcf_list=\"\$vcf_list $dir/$sample/variantCalling/byChr/chr\$chr/chr\${chr}.gatkHC.vcf.gz\"
+done
+
+## Combined all byCHR gvcf
+echo \"CatVariants chr gvcf started on \`date\`\" >> \$log
+      java -Xmx30g -cp /software/GenomeAnalysisTK/3.8.1.0/GenomeAnalysisTK.jar org.broadinstitute.gatk.tools.CatVariants --assumeSorted -R $refseq \$gvcf_list -out $dir/$sample/variantCalling/${sample}.gvcf.vcf.gz && \\
+      tabix -f -p vcf $dir/$sample/variantCalling/${sample}.gvcf.vcf.gz
+echo \"CatVariants chr gvcf ended on \`date\`\" >> \$log
+
+## Combined all byCHR gatkHC.vcf
+echo \"Combined chr gatkHC.vcf started on \`date\`\" >> \$log
+      perl /software/vcftools/0.1.15/bin/vcf-concat \$vcf_list | bgzip -c > $dir/$sample/variantCalling/${sample}.gatkHC.vcf.gz && \\
+      tabix -f -p vcf $dir/$sample/variantCalling/${sample}.gatkHC.vcf.gz
+echo \"Combined chr gatkHC.vcf ended on \`date\`\" >> \$log"          >$dir/sh.e.o/06_catgvcf/step6_${sample}_catgvcf.sh
+#### Step 6, Generating individual gVCF and VCF #########################################################################################
+
