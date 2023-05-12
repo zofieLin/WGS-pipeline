@@ -71,6 +71,7 @@ done
 
 
 #### Step 3, Realignment ###############################################################################################################
+## this step have beed discarded in GATK, can consider to remove this step as it take long time ##
 if [ ! -d "$dir/sh.e.o/03_realign" ]; then mkdir -p $dir/sh.e.o/03_realign; fi
 
 for sample in `cat $dir/sample.list`
